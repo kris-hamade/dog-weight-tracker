@@ -1,0 +1,248 @@
+:root {
+  color-scheme: dark;
+  --ink: #eef1f0;
+  --muted: #9aa4a6;
+  --sand: #1a1f20;
+  --stone: #2b3336;
+  --gold: #d9a441;
+  --foam: #1b2123;
+  --shadow: rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top, #1e2426 0%, #15191a 55%, #0e1112 100%);
+  color: var(--ink);
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.hero {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: 40px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 3vw, 3.4rem);
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: var(--muted);
+  max-width: 460px;
+  font-size: 1.05rem;
+}
+
+.metric-card {
+  background: #0f1314;
+  color: #f7f4ee;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 18px 40px var(--shadow);
+  background-image: linear-gradient(120deg, #0f1314 0%, #2a2316 100%);
+}
+
+.metric-label {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-size: 0.65rem;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 2.6rem;
+  font-weight: 600;
+}
+
+.metric-date {
+  color: #cab894;
+}
+
+.content {
+  display: grid;
+  gap: 24px;
+}
+
+.card {
+  background: var(--foam);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 12px 30px var(--shadow);
+  border: 1px solid rgba(217, 164, 65, 0.12);
+}
+
+.card h2 {
+  margin-bottom: 12px;
+  font-size: 1.35rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.helper {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+form {
+  display: grid;
+  gap: 16px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(238, 241, 240, 0.15);
+  background: #121718;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+select {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(238, 241, 240, 0.15);
+  background: #121718;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gold);
+  color: #1b1407;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(217, 164, 65, 0.35);
+}
+
+.entries {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.entry {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #151b1c;
+  border: 1px solid rgba(238, 241, 240, 0.08);
+}
+
+.entry span {
+  font-weight: 500;
+}
+
+.pet-select {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.pet-details {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.pet-form {
+  border-top: 1px solid rgba(238, 241, 240, 0.08);
+  padding-top: 16px;
+}
+
+.tips-card {
+  background-image: linear-gradient(180deg, #202729 0%, #15191a 100%);
+}
+
+.tips {
+  list-style: disc;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.tips-debug {
+  margin-top: 16px;
+  border: 1px solid rgba(238, 241, 240, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #14191a;
+}
+
+.tips-debug summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tips-debug pre {
+  margin-top: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+  color: #d5dfe0;
+}
+
+.chart-card {
+  background-image: linear-gradient(180deg, #1b2123 0%, #14191a 100%);
+}
+
+.list-card {
+  background-image: linear-gradient(180deg, #1d2325 0%, #14191a 100%);
+}
+
+@media (min-width: 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart-card {
+    grid-column: span 2;
+  }
+}

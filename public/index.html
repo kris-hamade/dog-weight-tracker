@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dog Weight Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Dog Weight Tracker</p>
+          <h1>Track your dog's health over time.</h1>
+          <p class="subtitle">
+            Log weigh-ins, view trends, and keep a steady pulse on your pup's
+            progress.
+          </p>
+        </div>
+        <div class="metric-card">
+          <div>
+            <p class="metric-label">Latest weight</p>
+            <p id="latestWeight" class="metric-value">--</p>
+            <p id="latestDate" class="metric-date">No entries yet</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="content">
+        <div class="card">
+          <h2>Pet profile</h2>
+          <div class="pet-select">
+            <label>
+              Active pet
+              <select id="petSelect" required></select>
+            </label>
+            <div id="petDetails" class="pet-details"></div>
+          </div>
+          <form id="petForm" class="pet-form">
+            <label>
+              Name
+              <input type="text" id="petNameInput" required />
+            </label>
+            <label>
+              Breed
+              <input type="text" id="petBreedInput" required />
+            </label>
+            <label>
+              Birth date
+              <input type="date" id="petBirthInput" required />
+            </label>
+            <button type="submit">Add pet</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>New weigh-in</h2>
+          <form id="weightForm">
+            <p id="activePetLabel" class="helper"></p>
+            <label>
+              Date
+              <input type="date" id="dateInput" required />
+            </label>
+            <label>
+              Weight (lb)
+              <input type="number" id="weightInput" step="0.1" min="0" required />
+            </label>
+            <button type="submit">Save entry</button>
+          </form>
+        </div>
+
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>Weight trend</h2>
+            <p class="helper">Showing all recorded weigh-ins.</p>
+          </div>
+          <canvas id="weightChart" height="120"></canvas>
+        </div>
+
+        <div class="card list-card">
+          <div class="card-header">
+            <h2>Recent entries</h2>
+            <p class="helper">Newest entries appear first.</p>
+          </div>
+          <ul id="entriesList" class="entries"></ul>
+        </div>
+
+        <div class="card tips-card">
+          <div class="card-header">
+            <h2>Weight-loss tips</h2>
+            <p class="helper">AI suggestions for the active pet.</p>
+          </div>
+          <p id="tipsStatus" class="helper">Select a pet to get tips.</p>
+          <ul id="tipsList" class="tips"></ul>
+          <details id="tipsDebug" class="tips-debug">
+            <summary>Debug</summary>
+            <p class="helper">Debug output for the last AI request.</p>
+            <pre id="tipsDebugContent"></pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
