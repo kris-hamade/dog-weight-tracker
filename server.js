@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
 const {
@@ -12,18 +13,335 @@ const {
     listWeightsByPet,
     insertPetFact,
     listPetFactsByPet,
+    createUser,
+    getUserByUsername,
+    createSession,
+    getSessionWithUser,
+    deleteSessionByTokenHash,
+    deleteExpiredSessions,
 } = require("./src/db");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SESSION_COOKIE = "session";
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_SECRET = process.env.SESSION_SECRET || "";
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
-app.get("/api/pets", async (_req, res) => {
+function parseCookies(header) {
+    if (!header) {
+        return {};
+    }
+    return header.split(";").reduce((acc, part) => {
+        const [rawKey, ...rawValue] = part.trim().split("=");
+        if (!rawKey) {
+            return acc;
+        }
+        acc[rawKey] = decodeURIComponent(rawValue.join("="));
+        return acc;
+    }, {});
+}
+
+function hashToken(token) {
+    return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function signToken(token) {
+    return crypto.createHmac("sha256", SESSION_SECRET).update(token).digest("hex");
+}
+
+function timingSafeEqual(a, b) {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
+function setSessionCookie(res, token) {
+    const signature = signToken(token);
+    const cookieValue = `${token}.${signature}`;
+    const parts = [
+        `${SESSION_COOKIE}=${cookieValue}`,
+        "HttpOnly",
+        "SameSite=Lax",
+        "Path=/",
+        `Max-Age=${SESSION_TTL_SECONDS}`,
+    ];
+    if (process.env.NODE_ENV === "production") {
+        parts.push("Secure");
+    }
+    res.setHeader("Set-Cookie", parts.join("; "));
+}
+
+function clearSessionCookie(res) {
+    res.setHeader(
+        "Set-Cookie",
+        `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+    );
+}
+
+async function getAuthUser(req) {
+    if (!SESSION_SECRET) {
+        return null;
+    }
+
+    const cookies = parseCookies(req.headers.cookie);
+    const rawToken = cookies[SESSION_COOKIE];
+    if (!rawToken) {
+        return null;
+    }
+
+    const [token, signature] = rawToken.split(".");
+    if (!token || !signature) {
+        return null;
+    }
+
+    const expected = signToken(token);
+    if (!timingSafeEqual(signature, expected)) {
+        return null;
+    }
+
+    const tokenHash = hashToken(token);
+    const db = await openDb();
+    await deleteExpiredSessions(db);
+    const session = await getSessionWithUser(db, tokenHash);
+    if (!session) {
+        return null;
+    }
+
+    const expiresAt = new Date(session.expires_at).getTime();
+    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
+        await deleteSessionByTokenHash(db, tokenHash);
+        return null;
+    }
+
+    return {
+        id: session.user_id,
+        username: session.username,
+        is_admin: Boolean(session.is_admin),
+        tokenHash,
+    };
+}
+
+function requireAuth(req, res, next) {
+    getAuthUser(req)
+        .then((user) => {
+            if (!user) {
+                res.status(401).json({ error: "Authentication required." });
+                return;
+            }
+            req.user = user;
+            next();
+        })
+        .catch(() => {
+            res.status(500).json({ error: "Authentication failed." });
+        });
+}
+
+function requireAdmin(req, res, next) {
+    getAuthUser(req)
+        .then((user) => {
+            if (!user) {
+                res.status(401).json({ error: "Authentication required." });
+                return;
+            }
+            if (!user.is_admin) {
+                res.status(403).json({ error: "Admin access required." });
+                return;
+            }
+            req.user = user;
+            next();
+        })
+        .catch(() => {
+            res.status(500).json({ error: "Authentication failed." });
+        });
+}
+
+function requirePageAuth(req, res, next) {
+    getAuthUser(req)
+        .then((user) => {
+            if (!user) {
+                res.redirect("/login");
+                return;
+            }
+            req.user = user;
+            next();
+        })
+        .catch(() => {
+            res.status(500).send("Authentication failed.");
+        });
+}
+
+function requireAdminPage(req, res, next) {
+    getAuthUser(req)
+        .then((user) => {
+            if (!user) {
+                res.redirect("/login");
+                return;
+            }
+            if (!user.is_admin) {
+                res.status(403).send("Admin access required.");
+                return;
+            }
+            req.user = user;
+            next();
+        })
+        .catch(() => {
+            res.status(500).send("Authentication failed.");
+        });
+}
+
+app.get("/", (_req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/login", (_req, res) => {
+    res.redirect("/");
+});
+
+app.get("/admin", requireAdminPage, (_req, res) => {
+    res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
+
+app.post("/api/login", async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!SESSION_SECRET) {
+        res.status(500).json({ error: "Missing SESSION_SECRET." });
+        return;
+    }
+
+    if (!username || !password) {
+        res.status(400).json({ error: "username and password are required." });
+        return;
+    }
+
     try {
         const db = await openDb();
-        const pets = await listPets(db);
+        const user = await getUserByUsername(db, username.trim());
+        if (!user) {
+            res.status(401).json({ error: "Invalid credentials." });
+            return;
+        }
+
+        const hash = crypto
+            .pbkdf2Sync(password, user.password_salt, user.password_iters, 32, "sha256")
+            .toString("hex");
+        if (!timingSafeEqual(hash, user.password_hash)) {
+            res.status(401).json({ error: "Invalid credentials." });
+            return;
+        }
+
+        const token = crypto.randomBytes(32).toString("hex");
+        const tokenHash = hashToken(token);
+        const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
+        await createSession(db, user.id, tokenHash, expiresAt);
+
+        setSessionCookie(res, token);
+        res.json({
+            user: {
+                id: user.id,
+                username: user.username,
+                is_admin: Boolean(user.is_admin),
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Login failed." });
+    }
+});
+
+app.post("/api/signup", async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!SESSION_SECRET) {
+        res.status(500).json({ error: "Missing SESSION_SECRET." });
+        return;
+    }
+
+    if (!username || !password) {
+        res.status(400).json({ error: "username and password are required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const existing = await getUserByUsername(db, username.trim());
+        if (existing) {
+            res.status(409).json({ error: "Username already exists." });
+            return;
+        }
+
+        const salt = crypto.randomBytes(16).toString("hex");
+        const iters = 310000;
+        const hash = crypto.pbkdf2Sync(password, salt, iters, 32, "sha256").toString("hex");
+        const user = await createUser(db, username.trim(), hash, salt, iters, false);
+
+        const token = crypto.randomBytes(32).toString("hex");
+        const tokenHash = hashToken(token);
+        const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
+        await createSession(db, user.id, tokenHash, expiresAt);
+        setSessionCookie(res, token);
+
+        res.status(201).json({
+            user: {
+                id: user.id,
+                username: user.username,
+                is_admin: false,
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Signup failed." });
+    }
+});
+
+app.post("/api/logout", requireAuth, async (req, res) => {
+    try {
+        const db = await openDb();
+        await deleteSessionByTokenHash(db, req.user.tokenHash);
+        clearSessionCookie(res);
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: "Logout failed." });
+    }
+});
+
+app.get("/api/me", requireAuth, (req, res) => {
+    res.json({
+        user: {
+            id: req.user.id,
+            username: req.user.username,
+            is_admin: req.user.is_admin,
+        },
+    });
+});
+
+app.post("/api/users", requireAdmin, async (req, res) => {
+    const { username, password, isAdmin } = req.body;
+    if (!username || !password) {
+        res.status(400).json({ error: "username and password are required." });
+        return;
+    }
+
+    try {
+        const salt = crypto.randomBytes(16).toString("hex");
+        const iters = 310000;
+        const hash = crypto.pbkdf2Sync(password, salt, iters, 32, "sha256").toString("hex");
+        const db = await openDb();
+        const user = await createUser(db, username.trim(), hash, salt, iters, Boolean(isAdmin));
+        res.status(201).json({ user });
+    } catch (error) {
+        res.status(500).json({ error: "Unable to create user." });
+    }
+});
+
+app.use("/api", requireAuth);
+
+app.get("/api/pets", async (req, res) => {
+    try {
+        const db = await openDb();
+        const pets = await listPets(db, req.user.id);
         res.json(pets);
     } catch (error) {
         res.status(500).json({ error: "Failed to load pets." });
@@ -40,7 +358,7 @@ app.post("/api/pets", async (req, res) => {
 
     try {
         const db = await openDb();
-        const pet = await insertPet(db, name, breed, birthDate);
+        const pet = await insertPet(db, req.user.id, name, breed, birthDate);
         res.status(201).json(pet);
     } catch (error) {
         res.status(500).json({ error: "Failed to save pet." });
@@ -57,6 +375,11 @@ app.get("/api/weights", async (req, res) => {
 
     try {
         const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
         const rows = await listWeightsByPet(db, petId);
         res.json(rows);
     } catch (error) {
@@ -74,6 +397,11 @@ app.post("/api/weights", async (req, res) => {
 
     try {
         const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
         const record = await insertWeight(db, petId, date, weight);
         res.status(201).json(record);
     } catch (error) {
@@ -91,6 +419,11 @@ app.get("/api/facts", async (req, res) => {
 
     try {
         const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
         const facts = await listPetFactsByPet(db, petId);
         res.json(facts);
     } catch (error) {
@@ -108,6 +441,11 @@ app.post("/api/facts/bulk", async (req, res) => {
 
     try {
         const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
         const saved = [];
         for (const item of items) {
             if (!item.question || !item.answer) {
@@ -196,7 +534,7 @@ app.get("/api/questions", async (req, res) => {
 
     try {
         const db = await openDb();
-        const pet = await getPetById(db, petId);
+        const pet = await getPetById(db, petId, req.user.id);
         const facts = await listPetFactsByPet(db, petId);
 
         if (!pet) {
@@ -268,7 +606,7 @@ app.get("/api/tips", async (req, res) => {
 
     try {
         const db = await openDb();
-        const pet = await getPetById(db, petId);
+        const pet = await getPetById(db, petId, req.user.id);
         const weights = await listWeightsByPet(db, petId);
         const facts = await listPetFactsByPet(db, petId);
 

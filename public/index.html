@@ -14,6 +14,58 @@
   </head>
   <body>
     <main class="page">
+      <section id="authGate" class="auth-card">
+        <p class="eyebrow">Dog Weight Tracker</p>
+        <div class="auth-tabs">
+          <button id="showSignupBtn" class="auth-tab is-active" type="button">Create account</button>
+          <button id="showLoginBtn" class="auth-tab" type="button">Sign in</button>
+        </div>
+
+        <div id="signupPanel" class="auth-panel">
+          <h1>Create your account</h1>
+          <p class="subtitle">Set up a username and password to get started.</p>
+          <form id="signupForm" class="auth-form">
+            <label>
+              Username
+              <input type="text" id="signupUsername" autocomplete="username" required />
+            </label>
+            <label>
+              Password
+              <input type="password" id="signupPassword" autocomplete="new-password" required />
+            </label>
+            <button type="submit">Create account</button>
+            <p id="signupStatus" class="helper"></p>
+          </form>
+        </div>
+
+        <div id="loginPanel" class="auth-panel" hidden>
+          <h1>Sign in</h1>
+          <p class="subtitle">Welcome back. Continue where you left off.</p>
+          <form id="inlineLoginForm" class="auth-form">
+            <label>
+              Username
+              <input type="text" id="inlineLoginUsername" autocomplete="username" required />
+            </label>
+            <label>
+              Password
+              <input type="password" id="inlineLoginPassword" autocomplete="current-password" required />
+            </label>
+            <button type="submit">Sign in</button>
+            <p id="inlineLoginStatus" class="helper"></p>
+          </form>
+        </div>
+      </section>
+
+      <div id="appShell" class="app-shell" hidden>
+      <div class="topbar">
+        <div class="topbar-user">
+          Signed in as <span id="userName" class="user-name">--</span>
+        </div>
+        <div class="topbar-actions">
+          <a id="adminLink" class="topbar-link" href="/admin" hidden>Admin</a>
+          <button id="logoutBtn" class="topbar-button" type="button">Log out</button>
+        </div>
+      </div>
       <section class="hero">
         <div>
           <p class="eyebrow">Dog Weight Tracker</p>
@@ -119,6 +171,7 @@
           <ul id="tipsList" class="tips"></ul>
         </div>
       </section>
+      </div>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

@@ -18,11 +18,70 @@ const questionsList = document.getElementById("questionsList");
 const questionsStatus = document.getElementById("questionsStatus");
 const factsForm = document.getElementById("factsForm");
 const factsList = document.getElementById("factsList");
+const userName = document.getElementById("userName");
+const logoutBtn = document.getElementById("logoutBtn");
+const adminLink = document.getElementById("adminLink");
+const authGate = document.getElementById("authGate");
+const appShell = document.getElementById("appShell");
+const signupForm = document.getElementById("signupForm");
+const signupUsername = document.getElementById("signupUsername");
+const signupPassword = document.getElementById("signupPassword");
+const signupStatus = document.getElementById("signupStatus");
+const showSignupBtn = document.getElementById("showSignupBtn");
+const showLoginBtn = document.getElementById("showLoginBtn");
+const signupPanel = document.getElementById("signupPanel");
+const loginPanel = document.getElementById("loginPanel");
+const inlineLoginForm = document.getElementById("inlineLoginForm");
+const inlineLoginUsername = document.getElementById("inlineLoginUsername");
+const inlineLoginPassword = document.getElementById("inlineLoginPassword");
+const inlineLoginStatus = document.getElementById("inlineLoginStatus");
 
 let chart;
 let pets = [];
 let activePetId = null;
 let pendingQuestions = [];
+
+async function fetchMe() {
+  const response = await fetch("/api/me");
+  if (response.status === 401) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error("Unable to load user.");
+  }
+  const data = await response.json();
+  return data.user;
+}
+
+async function createAccount(payload) {
+  const response = await fetch("/api/signup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Unable to create account.");
+  }
+  return response.json();
+}
+
+async function signIn(payload) {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Sign in failed.");
+  }
+  return response.json();
+}
 
 function formatDateLabel(value) {
   const date = new Date(value);
@@ -468,7 +527,70 @@ const today = new Date();
 dateInput.value = today.toISOString().split("T")[0];
 petBirthInput.value = today.toISOString().split("T")[0];
 
+logoutBtn.addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.reload();
+});
+
+signupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  signupStatus.textContent = "Creating account...";
+  try {
+    await createAccount({
+      username: signupUsername.value.trim(),
+      password: signupPassword.value,
+    });
+    window.location.reload();
+  } catch (error) {
+    signupStatus.textContent = error.message;
+  }
+});
+
+inlineLoginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  inlineLoginStatus.textContent = "Signing in...";
+  try {
+    await signIn({
+      username: inlineLoginUsername.value.trim(),
+      password: inlineLoginPassword.value,
+    });
+    window.location.reload();
+  } catch (error) {
+    inlineLoginStatus.textContent = error.message;
+  }
+});
+
+function setAuthMode(mode) {
+  const showSignup = mode === "signup";
+  signupPanel.hidden = !showSignup;
+  loginPanel.hidden = showSignup;
+  showSignupBtn.classList.toggle("is-active", showSignup);
+  showLoginBtn.classList.toggle("is-active", !showSignup);
+}
+
+showSignupBtn.addEventListener("click", () => setAuthMode("signup"));
+showLoginBtn.addEventListener("click", () => setAuthMode("login"));
+
 async function boot() {
+  authGate.hidden = false;
+  appShell.hidden = true;
+  try {
+    const user = await fetchMe();
+    if (!user) {
+      authGate.hidden = false;
+      appShell.hidden = true;
+      setAuthMode("signup");
+      return;
+    }
+    authGate.hidden = true;
+    appShell.hidden = false;
+    userName.textContent = user.username;
+    if (user.is_admin) {
+      adminLink.hidden = false;
+    }
+  } catch (error) {
+    userName.textContent = "Unknown";
+  }
   pets = await fetchPets();
   renderPetOptions();
   const initialId = pets.length ? pets[0].id : null;

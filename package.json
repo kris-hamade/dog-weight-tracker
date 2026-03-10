@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "create-user": "node scripts/create-user.js",
+    "assign-pet": "node scripts/assign-pet.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

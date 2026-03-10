@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in - Dog Weight Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="page auth-page">
+      <section class="auth-card">
+        <p class="eyebrow">Dog Weight Tracker</p>
+        <h1>Sign in</h1>
+        <p class="subtitle">Use your username and password to continue.</p>
+        <form id="loginForm" class="auth-form">
+          <label>
+            Username
+            <input type="text" id="usernameInput" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input type="password" id="passwordInput" autocomplete="current-password" required />
+          </label>
+          <button type="submit">Sign in</button>
+          <p id="loginStatus" class="helper"></p>
+        </form>
+      </section>
+    </main>
+    <script src="login.js"></script>
+  </body>
+</html>
