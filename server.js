@@ -10,6 +10,8 @@ const {
     getPetById,
     insertWeight,
     listWeightsByPet,
+    insertPetFact,
+    listPetFactsByPet,
 } = require("./src/db");
 
 const app = express();
@@ -79,6 +81,48 @@ app.post("/api/weights", async (req, res) => {
     }
 });
 
+app.get("/api/facts", async (req, res) => {
+    const petId = Number.parseInt(req.query.petId, 10);
+
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const facts = await listPetFactsByPet(db, petId);
+        res.json(facts);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to load facts." });
+    }
+});
+
+app.post("/api/facts/bulk", async (req, res) => {
+    const { petId, items } = req.body;
+
+    if (!petId || !Array.isArray(items) || !items.length) {
+        res.status(400).json({ error: "petId and items are required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const saved = [];
+        for (const item of items) {
+            if (!item.question || !item.answer) {
+                continue;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            const row = await insertPetFact(db, petId, item.question, item.answer);
+            saved.push(row);
+        }
+        res.status(201).json(saved);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to save facts." });
+    }
+});
+
 function formatAgeDetail(birthDate) {
     const birth = new Date(birthDate);
     if (Number.isNaN(birth.getTime())) {
@@ -123,6 +167,89 @@ function extractOutputText(data) {
     return textParts.join("\n");
 }
 
+function parseJsonArray(text, key) {
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed[key])) {
+            return parsed[key].map((item) => String(item).trim()).filter(Boolean);
+        }
+    } catch (error) {
+        return [];
+    }
+    return [];
+}
+
+app.get("/api/questions", async (req, res) => {
+    const petId = Number.parseInt(req.query.petId, 10);
+    const apiKey = process.env.OPENAI_API_KEY;
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    if (!apiKey) {
+        res.status(501).json({ error: "Missing OPENAI_API_KEY." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId);
+        const facts = await listPetFactsByPet(db, petId);
+
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const factsText = facts.length
+            ? facts.map((fact) => `${fact.question} -> ${fact.answer}`).join(" | ")
+            : "none";
+        const prompt = [
+            "You are helping collect routine details for a dog's weight loss plan.",
+            "Return JSON only with shape: { \"questions\": [\"...\", ...] }.",
+            "Ask 3-5 short questions that fill missing info about treats, food brand, portion size, feeding schedule, exercise, and activity level.",
+            "Avoid repeating facts that are already answered.",
+            `Pet name: ${pet.name}. Breed: ${pet.breed}. Birth date: ${pet.birth_date}.`,
+            `Existing facts: ${factsText}.`,
+        ].join("\n");
+
+        const response = await fetch("https://api.openai.com/v1/responses", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                input: prompt,
+            }),
+        });
+
+        const responseText = await response.text();
+        if (!response.ok) {
+            res.status(502).json({ error: "AI request failed.", detail: responseText });
+            return;
+        }
+
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            res.status(502).json({ error: "AI response parse failed.", detail: responseText });
+            return;
+        }
+
+        const text = extractOutputText(data);
+        const questions = parseJsonArray(text, "questions").slice(0, 5);
+        res.json({ questions });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to generate questions." });
+    }
+});
+
 app.get("/api/tips", async (req, res) => {
     const petId = Number.parseInt(req.query.petId, 10);
     const apiKey = process.env.OPENAI_API_KEY;
@@ -143,6 +270,7 @@ app.get("/api/tips", async (req, res) => {
         const db = await openDb();
         const pet = await getPetById(db, petId);
         const weights = await listWeightsByPet(db, petId);
+        const facts = await listPetFactsByPet(db, petId);
 
         if (!pet) {
             res.status(404).json({ error: "Pet not found." });
@@ -158,6 +286,9 @@ app.get("/api/tips", async (req, res) => {
         const recentText = recent.map((entry) => `${entry.date}: ${entry.weight} lb`).join("; ");
         const trendSummary = summarizeTrend(recent);
         const ageDetail = formatAgeDetail(pet.birth_date);
+        const factsText = facts.length
+            ? facts.map((fact) => `${fact.question} -> ${fact.answer}`).join(" | ")
+            : "none";
         const prompt = [
             "You are a helpful assistant for dog weight loss tips.",
             "Return JSON only with shape: { \"tips\": [\"...\", ...] }.",
@@ -167,6 +298,7 @@ app.get("/api/tips", async (req, res) => {
             `Pet name: ${pet.name}. Breed: ${pet.breed}. Birth date: ${pet.birth_date} (age ${ageDetail}).`,
             `Recent weigh-ins: ${recentText}.`,
             `Trend summary: ${trendSummary}`,
+            `User facts: ${factsText}`,
         ].join("\n");
 
         const debugInfo = debugTips
@@ -232,14 +364,8 @@ app.get("/api/tips", async (req, res) => {
             return;
         }
         const text = extractOutputText(data);
-        let tips = [];
-
-        try {
-            const parsed = JSON.parse(text);
-            if (Array.isArray(parsed.tips)) {
-                tips = parsed.tips.map((item) => String(item).trim()).filter(Boolean);
-            }
-        } catch (parseError) {
+        let tips = parseJsonArray(text, "tips");
+        if (!tips.length) {
             tips = text
                 .split("\n")
                 .map((line) => line.replace(/^[-*\d+.\s]+/, "").trim())

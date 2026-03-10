@@ -202,26 +202,62 @@ button:hover {
   gap: 10px;
 }
 
-.tips-debug {
-  margin-top: 16px;
-  border: 1px solid rgba(238, 241, 240, 0.08);
-  border-radius: 12px;
-  padding: 12px 14px;
-  background: #14191a;
+.tips a {
+  color: #f0c674;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.tips-debug summary {
-  cursor: pointer;
-  color: var(--muted);
+.facts-card {
+  background-image: linear-gradient(180deg, #1b2123 0%, #14191a 100%);
+}
+
+.facts-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.facts-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.questions {
+  display: grid;
+  gap: 12px;
+}
+
+.question-item {
+  display: grid;
+  gap: 8px;
   font-weight: 500;
 }
 
-.tips-debug pre {
-  margin-top: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 0.8rem;
-  color: #d5dfe0;
+.facts-history h3 {
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.facts {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.fact-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #151b1c;
+  border: 1px solid rgba(238, 241, 240, 0.08);
+}
+
+.fact-item strong {
+  font-weight: 600;
 }
 
 .chart-card {

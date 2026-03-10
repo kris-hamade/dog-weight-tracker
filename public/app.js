@@ -13,12 +13,16 @@ const petBirthInput = document.getElementById("petBirthInput");
 const tipsList = document.getElementById("tipsList");
 const tipsStatus = document.getElementById("tipsStatus");
 const activePetLabel = document.getElementById("activePetLabel");
-const tipsDebug = document.getElementById("tipsDebug");
-const tipsDebugContent = document.getElementById("tipsDebugContent");
+const generateQuestionsBtn = document.getElementById("generateQuestionsBtn");
+const questionsList = document.getElementById("questionsList");
+const questionsStatus = document.getElementById("questionsStatus");
+const factsForm = document.getElementById("factsForm");
+const factsList = document.getElementById("factsList");
 
 let chart;
 let pets = [];
 let activePetId = null;
+let pendingQuestions = [];
 
 function formatDateLabel(value) {
   const date = new Date(value);
@@ -50,11 +54,19 @@ function setActivePet(petId) {
     activePetLabel.textContent = "Add a pet to start logging weigh-ins.";
     form.querySelector("button").disabled = true;
     tipsStatus.textContent = "Add a pet to get tips.";
+    generateQuestionsBtn.disabled = true;
+    questionsStatus.textContent = "Add a pet to generate questions.";
+    pendingQuestions = [];
+    renderQuestions([]);
     return;
   }
   petDetails.textContent = `${pet.breed} · ${formatAge(pet.birth_date)}`;
   activePetLabel.textContent = `Logging for ${pet.name}`;
   form.querySelector("button").disabled = false;
+  generateQuestionsBtn.disabled = false;
+  questionsStatus.textContent = "";
+  pendingQuestions = [];
+  renderQuestions([]);
 }
 
 function updateLatest(records) {
@@ -145,23 +157,77 @@ function renderTips(tips) {
   tipsStatus.textContent = "";
   tips.forEach((tip) => {
     const item = document.createElement("li");
-    item.textContent = tip;
+    appendTextWithLinks(item, tip);
     tipsList.appendChild(item);
   });
 }
 
-function renderTipsDebug(debugInfo) {
-  if (!tipsDebug || !tipsDebugContent) {
+function appendTextWithLinks(container, text) {
+  const regex = /(https?:\/\/[^\s]+)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+
+    const rawUrl = match[0];
+    const cleanUrl = rawUrl.replace(/[),.]+$/, "");
+    const trailing = rawUrl.slice(cleanUrl.length);
+    const link = document.createElement("a");
+    link.href = cleanUrl;
+    link.textContent = cleanUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    container.appendChild(link);
+    if (trailing) {
+      container.appendChild(document.createTextNode(trailing));
+    }
+
+    lastIndex = match.index + rawUrl.length;
+  }
+
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
+function renderQuestions(questions) {
+  questionsList.innerHTML = "";
+  if (!questions.length) {
+    questionsStatus.textContent = "No questions yet.";
     return;
   }
-  if (!debugInfo) {
-    tipsDebugContent.textContent = "";
-    tipsDebug.open = false;
-    tipsDebug.style.display = "none";
+  questionsStatus.textContent = "";
+  questions.forEach((question, index) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "question-item";
+    wrapper.textContent = question;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Type your answer";
+    input.dataset.questionIndex = String(index);
+    wrapper.appendChild(input);
+    questionsList.appendChild(wrapper);
+  });
+}
+
+function renderFacts(facts) {
+  factsList.innerHTML = "";
+  if (!facts.length) {
+    const item = document.createElement("li");
+    item.className = "fact-item";
+    item.textContent = "No saved answers yet.";
+    factsList.appendChild(item);
     return;
   }
-  tipsDebug.style.display = "block";
-  tipsDebugContent.textContent = JSON.stringify(debugInfo, null, 2);
+  facts.forEach((fact) => {
+    const item = document.createElement("li");
+    item.className = "fact-item";
+    item.innerHTML = `<strong>${fact.question}</strong><span>${fact.answer}</span>`;
+    factsList.appendChild(item);
+  });
 }
 
 async function fetchPets() {
@@ -197,6 +263,48 @@ async function fetchWeights() {
   return response.json();
 }
 
+async function fetchFacts() {
+  if (!activePetId) {
+    return [];
+  }
+  const response = await fetch(`/api/facts?petId=${activePetId}`);
+  if (!response.ok) {
+    return [];
+  }
+  return response.json();
+}
+
+async function fetchQuestions() {
+  if (!activePetId) {
+    return [];
+  }
+  const response = await fetch(`/api/questions?petId=${activePetId}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    questionsStatus.textContent = data?.error || "Unable to generate questions.";
+    return [];
+  }
+  const data = await response.json();
+  return data.questions || [];
+}
+
+async function saveFacts(items) {
+  const response = await fetch("/api/facts/bulk", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      petId: activePetId,
+      items,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("Unable to save facts.");
+  }
+  return response.json();
+}
+
 async function fetchTips() {
   if (!activePetId) {
     return [];
@@ -205,7 +313,7 @@ async function fetchTips() {
   if (!response.ok) {
     const data = await response.json().catch(() => null);
     tipsStatus.textContent = data?.error || "Tips unavailable. Check API key.";
-    return { tips: null, debug: data?.debug || null };
+    return { tips: null };
   }
   const data = await response.json();
   if (data.reason === "no_weights") {
@@ -213,7 +321,7 @@ async function fetchTips() {
   } else if (data.reason === "no_tips") {
     tipsStatus.textContent = "No tips returned. Try again.";
   }
-  return { tips: data.tips || [], debug: data.debug || null };
+  return { tips: data.tips || [] };
 }
 
 async function refresh() {
@@ -222,6 +330,9 @@ async function refresh() {
     renderEntries([]);
     renderChart([]);
     renderTips(null);
+    pendingQuestions = [];
+    renderQuestions([]);
+    renderFacts([]);
     return;
   }
   const records = await fetchWeights();
@@ -230,7 +341,8 @@ async function refresh() {
   renderChart(records);
   const tipsPayload = await fetchTips();
   renderTips(tipsPayload?.tips ?? null);
-  renderTipsDebug(tipsPayload?.debug ?? null);
+  const facts = await fetchFacts();
+  renderFacts(facts);
 }
 
 form.addEventListener("submit", async (event) => {
@@ -268,6 +380,48 @@ petSelect.addEventListener("change", async (event) => {
   setActivePet(event.target.value);
   tipsStatus.textContent = "Loading tips...";
   await refresh();
+});
+
+generateQuestionsBtn.addEventListener("click", async () => {
+  if (!activePetId) {
+    return;
+  }
+  questionsStatus.textContent = "Generating questions...";
+  pendingQuestions = await fetchQuestions();
+  renderQuestions(pendingQuestions);
+});
+
+factsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!pendingQuestions.length) {
+    questionsStatus.textContent = "Generate questions first.";
+    return;
+  }
+  const inputs = Array.from(questionsList.querySelectorAll("input"));
+  const items = inputs
+    .map((input) => {
+      const index = Number.parseInt(input.dataset.questionIndex, 10);
+      return {
+        question: pendingQuestions[index],
+        answer: input.value.trim(),
+      };
+    })
+    .filter((item) => item.answer);
+
+  if (!items.length) {
+    questionsStatus.textContent = "Add at least one answer before saving.";
+    return;
+  }
+
+  try {
+    await saveFacts(items);
+    pendingQuestions = [];
+    renderQuestions([]);
+    questionsStatus.textContent = "Saved.";
+    await refresh();
+  } catch (error) {
+    questionsStatus.textContent = "Unable to save answers.";
+  }
 });
 
 petForm.addEventListener("submit", async (event) => {

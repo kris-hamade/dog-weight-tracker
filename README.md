@@ -29,4 +29,5 @@ Copy [.env.example](.env.example) to `.env` and fill in any values you need:
 ## What it does
 
 - Stores pets with breed + birth date and weigh-ins per pet
-- Renders a trend chart, recent entries, and AI tips
+- Captures routine Q&A (food, treats, exercise) for better AI context
+- Renders a trend chart, recent entries, and AI tips with clickable links

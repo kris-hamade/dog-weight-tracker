@@ -91,6 +91,25 @@
           <ul id="entriesList" class="entries"></ul>
         </div>
 
+        <div class="card facts-card">
+          <div class="card-header">
+            <h2>Routine & notes</h2>
+            <p class="helper">Answer a few questions so tips stay relevant.</p>
+          </div>
+          <div class="facts-actions">
+            <button id="generateQuestionsBtn" type="button">Generate questions</button>
+            <p id="questionsStatus" class="helper"></p>
+          </div>
+          <form id="factsForm" class="facts-form">
+            <div id="questionsList" class="questions"></div>
+            <button type="submit">Save answers</button>
+          </form>
+          <div class="facts-history">
+            <h3>Saved answers</h3>
+            <ul id="factsList" class="facts"></ul>
+          </div>
+        </div>
+
         <div class="card tips-card">
           <div class="card-header">
             <h2>Weight-loss tips</h2>
@@ -98,11 +117,6 @@
           </div>
           <p id="tipsStatus" class="helper">Select a pet to get tips.</p>
           <ul id="tipsList" class="tips"></ul>
-          <details id="tipsDebug" class="tips-debug">
-            <summary>Debug</summary>
-            <p class="helper">Debug output for the last AI request.</p>
-            <pre id="tipsDebugContent"></pre>
-          </details>
         </div>
       </section>
     </main>

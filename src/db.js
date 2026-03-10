@@ -52,96 +52,107 @@ function initDb() {
                   return;
                 }
 
-                db.all("PRAGMA table_info(weights)", (pragmaError, rows) => {
-                  if (pragmaError) {
-                    db.close();
-                    reject(pragmaError);
-                    return;
-                  }
-
-                  const hasPetId = rows.some((row) => row.name === "pet_id");
-                  if (hasPetId) {
-                    db.close((closeError) => {
-                      if (closeError) {
-                        reject(closeError);
-                        return;
-                      }
-                      resolve();
-                    });
-                    return;
-                  }
-
-                  db.run("ALTER TABLE weights ADD COLUMN pet_id INTEGER", (alterError) => {
-                    if (alterError) {
+                db.run(
+                  "CREATE TABLE IF NOT EXISTS pet_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, pet_id INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (pet_id) REFERENCES pets(id))",
+                  (factsError) => {
+                    if (factsError) {
                       db.close();
-                      reject(alterError);
+                      reject(factsError);
                       return;
                     }
 
-                    db.get("SELECT id FROM pets ORDER BY id LIMIT 1", (petError, petRow) => {
-                      if (petError) {
+                    db.all("PRAGMA table_info(weights)", (pragmaError, rows) => {
+                      if (pragmaError) {
                         db.close();
-                        reject(petError);
+                        reject(pragmaError);
                         return;
                       }
 
-                      if (petRow) {
-                        db.run(
-                          "UPDATE weights SET pet_id = ? WHERE pet_id IS NULL",
-                          [petRow.id],
-                          (updateError) => {
-                            if (updateError) {
-                              db.close();
-                              reject(updateError);
-                              return;
-                            }
-
-                            db.close((closeError) => {
-                              if (closeError) {
-                                reject(closeError);
-                                return;
-                              }
-                              resolve();
-                            });
+                      const hasPetId = rows.some((row) => row.name === "pet_id");
+                      if (hasPetId) {
+                        db.close((closeError) => {
+                          if (closeError) {
+                            reject(closeError);
+                            return;
                           }
-                        );
+                          resolve();
+                        });
                         return;
                       }
 
-                      db.run(
-                        "INSERT INTO pets (name, breed, birth_date) VALUES (?, ?, ?)",
-                        ["My Dog", "Unknown", new Date().toISOString().split("T")[0]],
-                        function insertDefaultPet(defaultError) {
-                          if (defaultError) {
+                      db.run("ALTER TABLE weights ADD COLUMN pet_id INTEGER", (alterError) => {
+                        if (alterError) {
+                          db.close();
+                          reject(alterError);
+                          return;
+                        }
+
+                        db.get("SELECT id FROM pets ORDER BY id LIMIT 1", (petError, petRow) => {
+                          if (petError) {
                             db.close();
-                            reject(defaultError);
+                            reject(petError);
+                            return;
+                          }
+
+                          if (petRow) {
+                            db.run(
+                              "UPDATE weights SET pet_id = ? WHERE pet_id IS NULL",
+                              [petRow.id],
+                              (updateError) => {
+                                if (updateError) {
+                                  db.close();
+                                  reject(updateError);
+                                  return;
+                                }
+
+                                db.close((closeError) => {
+                                  if (closeError) {
+                                    reject(closeError);
+                                    return;
+                                  }
+                                  resolve();
+                                });
+                              }
+                            );
                             return;
                           }
 
                           db.run(
-                            "UPDATE weights SET pet_id = ? WHERE pet_id IS NULL",
-                            [this.lastID],
-                            (updateError) => {
-                              if (updateError) {
+                            "INSERT INTO pets (name, breed, birth_date) VALUES (?, ?, ?)",
+                            ["My Dog", "Unknown", new Date().toISOString().split("T")[0]],
+                            function insertDefaultPet(defaultError) {
+                              if (defaultError) {
                                 db.close();
-                                reject(updateError);
+                                reject(defaultError);
                                 return;
                               }
 
-                              db.close((closeError) => {
-                                if (closeError) {
-                                  reject(closeError);
-                                  return;
+                              db.run(
+                                "UPDATE weights SET pet_id = ? WHERE pet_id IS NULL",
+                                [this.lastID],
+                                (updateError) => {
+                                  if (updateError) {
+                                    db.close();
+                                    reject(updateError);
+                                    return;
+                                  }
+
+                                  db.close((closeError) => {
+                                    if (closeError) {
+                                      reject(closeError);
+                                      return;
+                                    }
+                                    resolve();
+                                  });
                                 }
-                                resolve();
-                              });
+                              );
                             }
                           );
-                        }
-                      );
+                        });
+                      });
                     });
-                  });
-                });
+                  }
+                );
               }
             );
           }
@@ -244,6 +255,37 @@ function listWeights(db) {
   });
 }
 
+function insertPetFact(db, petId, question, answer) {
+  return new Promise((resolve, reject) => {
+    const stmt = "INSERT INTO pet_facts (pet_id, question, answer) VALUES (?, ?, ?)";
+    db.run(stmt, [petId, question, answer], function insertCallback(error) {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve({ id: this.lastID, pet_id: petId, question, answer });
+    });
+  });
+}
+
+function listPetFactsByPet(db, petId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      "SELECT id, pet_id, question, answer, created_at FROM pet_facts WHERE pet_id = ? ORDER BY created_at DESC",
+      [petId],
+      (error, rows) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(rows);
+      }
+    );
+  });
+}
+
 module.exports = {
   openDb,
   initDb,
@@ -253,4 +295,6 @@ module.exports = {
   insertWeight,
   listWeightsByPet,
   listWeights,
+  insertPetFact,
+  listPetFactsByPet,
 };
