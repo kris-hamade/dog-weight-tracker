@@ -110,6 +110,40 @@ h1 {
   font-size: 1.05rem;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  margin-bottom: 12px;
+}
+
+.hero-pet-switch {
+  display: grid;
+  gap: 8px;
+  max-width: 260px;
+  margin-bottom: 12px;
+}
+
+.hero-pet-switch label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.hero-pet-switch select {
+  background: rgba(18, 23, 24, 0.85);
+}
+
+.ghost-button {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid rgba(217, 164, 65, 0.4);
+}
+
+.ghost-button:hover {
+  box-shadow: 0 8px 18px rgba(217, 164, 65, 0.2);
+}
+
 .metric-card {
   background: #0f1314;
   color: #f7f4ee;
@@ -166,6 +200,52 @@ h1 {
   font-size: 0.9rem;
 }
 
+.view-switch {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(238, 241, 240, 0.12);
+  background: #121718;
+}
+
+.switch-btn {
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: none;
+  box-shadow: none;
+}
+
+.switch-btn:hover {
+  transform: none;
+  box-shadow: none;
+  color: var(--ink);
+}
+
+.switch-btn.is-active {
+  background: var(--gold);
+  color: #1b1407;
+}
+
+.view-panel {
+  margin-top: 10px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.view-panel.is-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.view-panel.is-leaving {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 form {
   display: grid;
   gap: 16px;
@@ -210,6 +290,13 @@ button {
 button:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(217, 164, 65, 0.35);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .auth-page,
@@ -289,6 +376,15 @@ button:hover {
   margin-bottom: 20px;
 }
 
+.pet-update-row {
+  display: grid;
+  gap: 12px;
+}
+
+.pet-update-row button {
+  width: fit-content;
+}
+
 .pet-details {
   color: var(--muted);
   font-size: 0.95rem;
@@ -301,6 +397,10 @@ button:hover {
 
 .tips-card {
   background-image: linear-gradient(180deg, #202729 0%, #15191a 100%);
+}
+
+.prominent-card {
+  min-height: 420px;
 }
 
 .tips {
@@ -324,6 +424,51 @@ button:hover {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-bottom: 16px;
+}
+
+.chat-list {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  padding-right: 4px;
+}
+
+.chat-bubble {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(238, 241, 240, 0.08);
+}
+
+.chat-user {
+  background: #22230f;
+  border-color: rgba(217, 164, 65, 0.25);
+}
+
+.chat-assistant {
+  background: #151b1c;
+}
+
+.chat-role {
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+
+.chat-body {
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.chat-time {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.chat-form {
   margin-bottom: 16px;
 }
 
@@ -376,6 +521,81 @@ button:hover {
   background-image: linear-gradient(180deg, #1d2325 0%, #14191a 100%);
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.modal.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 4, 5, 0.72);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.modal.is-open .modal-backdrop {
+  opacity: 1;
+}
+
+.modal-dialog {
+  position: relative;
+  width: min(780px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  opacity: 0;
+  transform: translateY(16px) scale(0.985);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.modal.is-open .modal-dialog {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-close {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid rgba(238, 241, 240, 0.2);
+  color: var(--ink);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: rgba(217, 164, 65, 0.4);
+  color: var(--gold);
+}
+
+body.has-modal-open {
+  overflow: hidden;
+}
+
 @media (min-width: 900px) {
   .hero {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -384,9 +604,15 @@ button:hover {
 
   .content {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
 
   .chart-card {
     grid-column: span 2;
+  }
+
+  .pet-update-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
   }
 }

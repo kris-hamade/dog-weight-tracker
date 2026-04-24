@@ -9,10 +9,17 @@ const {
     insertPet,
     listPets,
     getPetById,
+    updatePetProfileDates,
     insertWeight,
     listWeightsByPet,
     insertPetFact,
     listPetFactsByPet,
+    insertPetChatMessage,
+    listPetChatMessagesByPet,
+    insertPetMemoryItem,
+    listPetMemoryItemsByPet,
+    upsertPetAdviceCache,
+    getPetAdviceCacheByPet,
     createUser,
     getUserByUsername,
     createSession,
@@ -349,7 +356,7 @@ app.get("/api/pets", async (req, res) => {
 });
 
 app.post("/api/pets", async (req, res) => {
-    const { name, breed, birthDate } = req.body;
+    const { name, breed, birthDate, dietStartDate } = req.body;
 
     if (!name || !breed || !birthDate) {
         res.status(400).json({ error: "name, breed, and birthDate are required." });
@@ -358,10 +365,37 @@ app.post("/api/pets", async (req, res) => {
 
     try {
         const db = await openDb();
-        const pet = await insertPet(db, req.user.id, name, breed, birthDate);
+        const pet = await insertPet(db, req.user.id, name, breed, birthDate, dietStartDate || null);
         res.status(201).json(pet);
     } catch (error) {
         res.status(500).json({ error: "Failed to save pet." });
+    }
+});
+
+app.patch("/api/pets/:petId", async (req, res) => {
+    const petId = Number.parseInt(req.params.petId, 10);
+    const hasBirthDate = typeof req.body.birthDate === "string";
+    const hasDietStartDate = Object.prototype.hasOwnProperty.call(req.body, "dietStartDate");
+    const { birthDate, dietStartDate } = req.body;
+
+    if (!petId || (!hasBirthDate && !hasDietStartDate)) {
+        res.status(400).json({ error: "petId and at least one update field are required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const updated = await updatePetProfileDates(db, petId, req.user.id, {
+            birthDate,
+            dietStartDate,
+        });
+        if (!updated) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+        res.json({ pet: updated });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to update pet." });
     }
 });
 
@@ -487,6 +521,39 @@ function summarizeTrend(weights) {
     return `From ${first.date} (${first.weight} lb) to ${last.date} (${last.weight} lb): ${direction} ${change} lb.`;
 }
 
+function summarizeProgressSinceDate(weights, dietStartDate) {
+    if (!dietStartDate) {
+        return "Diet start date is not set.";
+    }
+
+    const filtered = weights.filter((entry) => entry.date >= dietStartDate);
+    if (!filtered.length) {
+        return `No weigh-ins recorded since diet start date (${dietStartDate}).`;
+    }
+    if (filtered.length === 1) {
+        return `Only one weigh-in exists since diet start date (${dietStartDate}). Add another to measure progress.`;
+    }
+
+    const first = filtered[0];
+    const last = filtered[filtered.length - 1];
+    const change = last.weight - first.weight;
+    const days = Math.max(
+        1,
+        Math.round((new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24))
+    );
+    const weeklyRate = (change / days) * 7;
+    const absChange = Math.abs(change).toFixed(2);
+    const absWeekly = Math.abs(weeklyRate).toFixed(2);
+
+    if (change < -0.05) {
+        return `Since diet start (${dietStartDate}), progress is down ${absChange} lb over ${days} days (~${absWeekly} lb/week).`;
+    }
+    if (change > 0.05) {
+        return `Since diet start (${dietStartDate}), weight is up ${absChange} lb over ${days} days (~${absWeekly} lb/week).`;
+    }
+    return `Since diet start (${dietStartDate}), weight is stable over ${days} days.`;
+}
+
 function extractOutputText(data) {
     if (data.output_text) {
         return data.output_text;
@@ -515,6 +582,178 @@ function parseJsonArray(text, key) {
         return [];
     }
     return [];
+}
+
+function parseJsonObject(text) {
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        return null;
+    }
+}
+
+function normalizeMemoryItems(items) {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .map((item) => {
+            if (!item || typeof item !== "object") {
+                return null;
+            }
+            const key = String(item.key || "").trim();
+            const value = String(item.value || "").trim();
+            if (!key || !value) {
+                return null;
+            }
+            return { key, value };
+        })
+        .filter(Boolean)
+        .slice(0, 8);
+}
+
+function formatMemory(memoryItems) {
+    if (!memoryItems.length) {
+        return "none";
+    }
+    return memoryItems.map((item) => `${item.memory_key}: ${item.memory_value}`).join(" | ");
+}
+
+function normalizeForSimilarity(text) {
+    return String(text || "")
+        .toLowerCase()
+        .replace(/https?:\/\/\S+/g, " ")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function tokenSet(text) {
+    const tokens = normalizeForSimilarity(text)
+        .split(" ")
+        .filter((token) => token.length > 2);
+    return new Set(tokens);
+}
+
+function jaccardSimilarity(a, b) {
+    const aSet = tokenSet(a);
+    const bSet = tokenSet(b);
+
+    if (!aSet.size && !bSet.size) {
+        return 1;
+    }
+
+    let intersection = 0;
+    for (const token of aSet) {
+        if (bSet.has(token)) {
+            intersection += 1;
+        }
+    }
+    const union = aSet.size + bSet.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+}
+
+function calculateRepeatRatio(newTips, previousTips) {
+    if (!newTips.length || !previousTips.length) {
+        return 0;
+    }
+
+    let repeatedCount = 0;
+    for (const tip of newTips) {
+        let maxSimilarity = 0;
+        for (const previous of previousTips) {
+            const score = jaccardSimilarity(tip, previous);
+            if (score > maxSimilarity) {
+                maxSimilarity = score;
+            }
+        }
+        if (maxSimilarity >= 0.55) {
+            repeatedCount += 1;
+        }
+    }
+
+    return repeatedCount / newTips.length;
+}
+
+async function requestAiText(apiKey, model, prompt) {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            input: prompt,
+        }),
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+        throw new Error(`AI request failed: ${response.status} ${responseText}`);
+    }
+
+    let data;
+    try {
+        data = JSON.parse(responseText);
+    } catch (parseError) {
+        throw new Error(`AI response parse failed: ${responseText}`);
+    }
+
+    return extractOutputText(data);
+}
+
+async function generateAdvice({ pet, weights, facts, memoryItems, previousTips, apiKey, model, forceNovel }) {
+    if (!weights.length) {
+        return [];
+    }
+
+    const recent = weights.slice(-8);
+    const recentText = recent.map((entry) => `${entry.date}: ${entry.weight} lb`).join("; ");
+    const trendSummary = summarizeTrend(recent);
+    const ageDetail = formatAgeDetail(pet.birth_date);
+    const factsText = facts.length
+        ? facts.map((fact) => `${fact.question} -> ${fact.answer}`).join(" | ")
+        : "none";
+    const memoryText = formatMemory(memoryItems);
+    const progressSummary = summarizeProgressSinceDate(weights, pet.diet_start_date);
+    const previousTipsText = previousTips.length
+        ? previousTips.map((tip, index) => `${index + 1}. ${tip}`).join("\n")
+        : "none";
+
+    const prompt = [
+        "You are a helpful assistant for dog weight loss tips.",
+        "Return JSON only with shape: { \"tips\": [\"...\", ...] }.",
+        "Tips must be 4-6 concise bullet-style items with actionable steps.",
+        "Avoid repeating advice that was previously shown.",
+        forceNovel
+            ? "Generate clearly different ideas than previous tips, prioritizing new routines, new measurement habits, and new activity structures."
+            : "Keep advice fresh when possible and avoid near-duplicate wording.",
+        "Include at least 2 tips that contain direct links to reputable sources (AKC, AAHA, WSAVA, veterinary universities).",
+        "Avoid medical claims and do not diagnose.",
+        `Pet name: ${pet.name}. Breed: ${pet.breed}. Birth date: ${pet.birth_date} (age ${ageDetail}).`,
+        `Recent weigh-ins: ${recentText}.`,
+        `Trend summary: ${trendSummary}`,
+        `Progress summary: ${progressSummary}`,
+        `Diet start date: ${pet.diet_start_date || "not set"}`,
+        `Saved routine facts: ${factsText}`,
+        `Conversation memory: ${memoryText}`,
+        "Previously shown tips to avoid repeating:",
+        previousTipsText,
+    ].join("\n");
+
+    const text = await requestAiText(apiKey, model, prompt);
+    let tips = parseJsonArray(text, "tips");
+    if (!tips.length) {
+        tips = text
+            .split("\n")
+            .map((line) => line.replace(/^[-*\d+.\s]+/, "").trim())
+            .filter(Boolean)
+            .slice(0, 6);
+    }
+
+    return tips;
 }
 
 app.get("/api/questions", async (req, res) => {
@@ -588,11 +827,176 @@ app.get("/api/questions", async (req, res) => {
     }
 });
 
-app.get("/api/tips", async (req, res) => {
+app.get("/api/chat/history", async (req, res) => {
     const petId = Number.parseInt(req.query.petId, 10);
+
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const messages = await listPetChatMessagesByPet(db, petId, 60);
+        res.json({ messages });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to load chat history." });
+    }
+});
+
+app.get("/api/memory", async (req, res) => {
+    const petId = Number.parseInt(req.query.petId, 10);
+
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const items = await listPetMemoryItemsByPet(db, petId, 80);
+        res.json({ items });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to load memory." });
+    }
+});
+
+app.post("/api/chat/message", async (req, res) => {
+    const { petId, message } = req.body;
     const apiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-    const debugTips = process.env.DEBUG_TIPS === "true";
+
+    if (!petId || !message || !String(message).trim()) {
+        res.status(400).json({ error: "petId and message are required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const userMessage = await insertPetChatMessage(db, petId, "user", String(message).trim());
+        const weights = await listWeightsByPet(db, petId);
+        const facts = await listPetFactsByPet(db, petId);
+        const memoryItems = await listPetMemoryItemsByPet(db, petId, 50);
+        const recentChat = await listPetChatMessagesByPet(db, petId, 12);
+
+        let assistantPayload = {
+            assistantMessage:
+                "Thanks, that helps. Tell me one more detail about feeding portions or treat frequency so I can improve the advice.",
+            shouldAskFollowUp: true,
+            followUpQuestion: "How many treats does your dog get on a typical day?",
+            memoryItems: [],
+        };
+
+        if (apiKey) {
+            const weightsText = weights.length
+                ? weights.slice(-8).map((entry) => `${entry.date}: ${entry.weight} lb`).join("; ")
+                : "none";
+            const factsText = facts.length
+                ? facts.map((fact) => `${fact.question} -> ${fact.answer}`).join(" | ")
+                : "none";
+            const memoryText = formatMemory(memoryItems);
+            const chatText = recentChat
+                .map((item) => `${item.role.toUpperCase()}: ${item.content}`)
+                .join("\n");
+
+            const prompt = [
+                "You are a conversational assistant helping build a healthy routine for a dog's weight management plan.",
+                "Return JSON only with shape:",
+                '{"assistantMessage":"...","shouldAskFollowUp":true,"followUpQuestion":"...","memoryItems":[{"key":"...","value":"..."}]}',
+                "assistantMessage should be brief, practical, and empathetic.",
+                "Extract up to 4 durable memory items from the latest user message.",
+                "Memory keys should be short snake_case like food_brand, daily_treat_count, walk_minutes, meal_portion.",
+                "If no follow-up is needed, set shouldAskFollowUp false and followUpQuestion to an empty string.",
+                `Pet profile: ${pet.name}, ${pet.breed}, born ${pet.birth_date}.`,
+                `Recent weights: ${weightsText}`,
+                `Saved facts: ${factsText}`,
+                `Saved memory: ${memoryText}`,
+                "Recent chat:",
+                chatText || "none",
+            ].join("\n");
+
+            const text = await requestAiText(apiKey, model, prompt);
+            const parsed = parseJsonObject(text);
+            if (parsed && typeof parsed === "object") {
+                assistantPayload = {
+                    assistantMessage: String(parsed.assistantMessage || assistantPayload.assistantMessage).trim(),
+                    shouldAskFollowUp: Boolean(parsed.shouldAskFollowUp),
+                    followUpQuestion: String(parsed.followUpQuestion || "").trim(),
+                    memoryItems: normalizeMemoryItems(parsed.memoryItems),
+                };
+            }
+        }
+
+        for (const item of assistantPayload.memoryItems) {
+            // eslint-disable-next-line no-await-in-loop
+            await insertPetMemoryItem(db, petId, item.key, item.value, userMessage.id);
+        }
+
+        const followUp = assistantPayload.shouldAskFollowUp && assistantPayload.followUpQuestion
+            ? `\n\n${assistantPayload.followUpQuestion}`
+            : "";
+        const assistantText = `${assistantPayload.assistantMessage}${followUp}`.trim();
+        const assistantMessage = await insertPetChatMessage(db, petId, "assistant", assistantText);
+
+        res.status(201).json({
+            message: assistantMessage,
+            memorySaved: assistantPayload.memoryItems.length,
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to process chat message." });
+    }
+});
+
+app.get("/api/advice", async (req, res) => {
+    const petId = Number.parseInt(req.query.petId, 10);
+
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const cache = await getPetAdviceCacheByPet(db, petId);
+        if (!cache) {
+            res.json({ tips: [], updatedAt: null, reason: "no_cache" });
+            return;
+        }
+
+        res.json({ tips: cache.tips, updatedAt: cache.updated_at });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to load advice." });
+    }
+});
+
+app.post("/api/advice/refresh", async (req, res) => {
+    const { petId } = req.body;
+    const apiKey = process.env.OPENAI_API_KEY;
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
     if (!petId) {
         res.status(400).json({ error: "petId is required." });
@@ -607,124 +1011,76 @@ app.get("/api/tips", async (req, res) => {
     try {
         const db = await openDb();
         const pet = await getPetById(db, petId, req.user.id);
-        const weights = await listWeightsByPet(db, petId);
-        const facts = await listPetFactsByPet(db, petId);
-
         if (!pet) {
             res.status(404).json({ error: "Pet not found." });
             return;
         }
 
-        if (!weights.length) {
-            res.json({ tips: [], reason: "no_weights" });
-            return;
-        }
+        const weights = await listWeightsByPet(db, petId);
+        const facts = await listPetFactsByPet(db, petId);
+        const memoryItems = await listPetMemoryItemsByPet(db, petId, 80);
+        const cacheBeforeRefresh = await getPetAdviceCacheByPet(db, petId);
+        const previousTips = cacheBeforeRefresh?.tips || [];
 
-        const recent = weights.slice(-8);
-        const recentText = recent.map((entry) => `${entry.date}: ${entry.weight} lb`).join("; ");
-        const trendSummary = summarizeTrend(recent);
-        const ageDetail = formatAgeDetail(pet.birth_date);
-        const factsText = facts.length
-            ? facts.map((fact) => `${fact.question} -> ${fact.answer}`).join(" | ")
-            : "none";
-        const prompt = [
-            "You are a helpful assistant for dog weight loss tips.",
-            "Return JSON only with shape: { \"tips\": [\"...\", ...] }.",
-            "Tips must be 4-6 concise bullet-style items with actionable steps.",
-            "Include at least 2 tips that contain direct links to reputable sources (AKC, AAHA, WSAVA, veterinary universities).",
-            "Avoid medical claims and do not diagnose.",
-            `Pet name: ${pet.name}. Breed: ${pet.breed}. Birth date: ${pet.birth_date} (age ${ageDetail}).`,
-            `Recent weigh-ins: ${recentText}.`,
-            `Trend summary: ${trendSummary}`,
-            `User facts: ${factsText}`,
-        ].join("\n");
+        let tips = await generateAdvice({
+            pet,
+            weights,
+            facts,
+            memoryItems,
+            previousTips,
+            apiKey,
+            model,
+            forceNovel: false,
+        });
 
-        const debugInfo = debugTips
-            ? {
-                  model,
-                  prompt,
-              }
-            : null;
-
-        if (debugTips) {
-            console.log("[tips] prompt", prompt);
-        }
-
-        const response = await fetch("https://api.openai.com/v1/responses", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
+        const repeatRatio = calculateRepeatRatio(tips, previousTips);
+        if (tips.length && repeatRatio >= 0.5) {
+            // Retry once with stronger novelty constraints when output is too repetitive.
+            tips = await generateAdvice({
+                pet,
+                weights,
+                facts,
+                memoryItems,
+                previousTips,
+                apiKey,
                 model,
-                input: prompt,
-            }),
-        });
-
-        const responseText = await response.text();
-
-        if (debugTips) {
-            console.log("[tips] response status", response.status);
-            console.log("[tips] response body", responseText);
-        }
-
-        if (!response.ok) {
-            res.status(502).json({
-                error: "AI request failed.",
-                detail: responseText,
-                debug: debugTips
-                    ? {
-                          ...debugInfo,
-                          responseStatus: response.status,
-                          responseText,
-                      }
-                    : undefined,
+                forceNovel: true,
             });
-            return;
         }
 
-        let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch (parseError) {
-            res.status(502).json({
-                error: "AI response parse failed.",
-                detail: responseText,
-                debug: debugTips
-                    ? {
-                          ...debugInfo,
-                          responseStatus: response.status,
-                          responseText,
-                      }
-                    : undefined,
-            });
-            return;
-        }
-        const text = extractOutputText(data);
-        let tips = parseJsonArray(text, "tips");
-        if (!tips.length) {
-            tips = text
-                .split("\n")
-                .map((line) => line.replace(/^[-*\d+.\s]+/, "").trim())
-                .filter(Boolean)
-                .slice(0, 6);
-        }
+        await upsertPetAdviceCache(db, petId, tips);
+        const cache = await getPetAdviceCacheByPet(db, petId);
 
-        res.json({
-            tips,
-            reason: tips.length ? undefined : "no_tips",
-            debug: debugTips
-                ? {
-                      ...debugInfo,
-                      responseStatus: response.status,
-                      responseText,
-                      outputText: text,
-                  }
-                : undefined,
-        });
+        res.json({ tips, updatedAt: cache?.updated_at || null, reason: tips.length ? undefined : "no_tips" });
     } catch (error) {
-        res.status(500).json({ error: "Failed to generate tips." });
+        res.status(500).json({ error: "Failed to refresh advice." });
+    }
+});
+
+app.get("/api/tips", async (req, res) => {
+    const petId = Number.parseInt(req.query.petId, 10);
+    if (!petId) {
+        res.status(400).json({ error: "petId is required." });
+        return;
+    }
+
+    try {
+        const db = await openDb();
+        const pet = await getPetById(db, petId, req.user.id);
+        if (!pet) {
+            res.status(404).json({ error: "Pet not found." });
+            return;
+        }
+
+        const cache = await getPetAdviceCacheByPet(db, petId);
+        if (!cache) {
+            res.json({ tips: [], reason: "no_cache" });
+            return;
+        }
+
+        res.json({ tips: cache.tips, updatedAt: cache.updated_at });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to load tips." });
     }
 });
 

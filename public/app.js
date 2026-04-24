@@ -10,14 +10,26 @@ const petForm = document.getElementById("petForm");
 const petNameInput = document.getElementById("petNameInput");
 const petBreedInput = document.getElementById("petBreedInput");
 const petBirthInput = document.getElementById("petBirthInput");
+const petDietStartInput = document.getElementById("petDietStartInput");
+const petBirthEditInput = document.getElementById("petBirthEditInput");
+const updatePetBirthBtn = document.getElementById("updatePetBirthBtn");
+const petBirthStatus = document.getElementById("petBirthStatus");
+const petDietStartEditInput = document.getElementById("petDietStartEditInput");
+const updateDietStartBtn = document.getElementById("updateDietStartBtn");
+const dietStartStatus = document.getElementById("dietStartStatus");
 const tipsList = document.getElementById("tipsList");
 const tipsStatus = document.getElementById("tipsStatus");
+const refreshAdviceBtn = document.getElementById("refreshAdviceBtn");
+const trendFeedback = document.getElementById("trendFeedback");
+const chatList = document.getElementById("chatList");
+const chatForm = document.getElementById("chatForm");
+const chatInput = document.getElementById("chatInput");
+const chatStatus = document.getElementById("chatStatus");
+const memoryList = document.getElementById("memoryList");
+const memoryStatus = document.getElementById("memoryStatus");
 const activePetLabel = document.getElementById("activePetLabel");
-const generateQuestionsBtn = document.getElementById("generateQuestionsBtn");
-const questionsList = document.getElementById("questionsList");
-const questionsStatus = document.getElementById("questionsStatus");
-const factsForm = document.getElementById("factsForm");
-const factsList = document.getElementById("factsList");
+const heroPetSelect = document.getElementById("heroPetSelect");
+const weighInPetLabel = document.getElementById("weighInPetLabel");
 const userName = document.getElementById("userName");
 const logoutBtn = document.getElementById("logoutBtn");
 const adminLink = document.getElementById("adminLink");
@@ -35,11 +47,91 @@ const inlineLoginForm = document.getElementById("inlineLoginForm");
 const inlineLoginUsername = document.getElementById("inlineLoginUsername");
 const inlineLoginPassword = document.getElementById("inlineLoginPassword");
 const inlineLoginStatus = document.getElementById("inlineLoginStatus");
+const openPetProfileBtn = document.getElementById("openPetProfileBtn");
+const openWeighInBtn = document.getElementById("openWeighInBtn");
+const petModal = document.getElementById("petModal");
+const weighInModal = document.getElementById("weighInModal");
+const showChartViewBtn = document.getElementById("showChartViewBtn");
+const showEntriesViewBtn = document.getElementById("showEntriesViewBtn");
+const chartViewPanel = document.getElementById("chartViewPanel");
+const entriesViewPanel = document.getElementById("entriesViewPanel");
 
 let chart;
 let pets = [];
 let activePetId = null;
-let pendingQuestions = [];
+const MODAL_ANIMATION_MS = 180;
+const VIEW_PANEL_ANIMATION_MS = 180;
+const modalCloseTimers = new WeakMap();
+let viewPanelTimer;
+
+function syncModalBodyState() {
+  const hasOpenModal = !petModal.hidden || !weighInModal.hidden;
+  document.body.classList.toggle("has-modal-open", hasOpenModal);
+}
+
+function setWeightView(view) {
+  const showChart = view === "chart";
+  const nextPanel = showChart ? chartViewPanel : entriesViewPanel;
+  const previousPanel = showChart ? entriesViewPanel : chartViewPanel;
+
+  if (viewPanelTimer) {
+    window.clearTimeout(viewPanelTimer);
+  }
+
+  nextPanel.hidden = false;
+  nextPanel.classList.remove("is-leaving");
+  nextPanel.classList.add("is-active");
+
+  if (!previousPanel.hidden) {
+    previousPanel.classList.remove("is-active");
+    previousPanel.classList.add("is-leaving");
+    viewPanelTimer = window.setTimeout(() => {
+      previousPanel.hidden = true;
+      previousPanel.classList.remove("is-leaving");
+    }, VIEW_PANEL_ANIMATION_MS);
+  } else {
+    previousPanel.classList.remove("is-active");
+    previousPanel.classList.remove("is-leaving");
+  }
+
+  showChartViewBtn.classList.toggle("is-active", showChart);
+  showEntriesViewBtn.classList.toggle("is-active", !showChart);
+  showChartViewBtn.setAttribute("aria-selected", String(showChart));
+  showEntriesViewBtn.setAttribute("aria-selected", String(!showChart));
+}
+
+function openModal(modal) {
+  if (!modal) {
+    return;
+  }
+
+  const pendingClose = modalCloseTimers.get(modal);
+  if (pendingClose) {
+    window.clearTimeout(pendingClose);
+    modalCloseTimers.delete(modal);
+  }
+
+  modal.hidden = false;
+  window.requestAnimationFrame(() => {
+    modal.classList.add("is-open");
+  });
+  syncModalBodyState();
+}
+
+function closeModal(modal) {
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.remove("is-open");
+  const timerId = window.setTimeout(() => {
+    modal.hidden = true;
+    modalCloseTimers.delete(modal);
+    syncModalBodyState();
+  }, MODAL_ANIMATION_MS);
+
+  modalCloseTimers.set(modal, timerId);
+}
 
 async function fetchMe() {
   const response = await fetch("/api/me");
@@ -91,6 +183,14 @@ function formatDateLabel(value) {
   return date.toLocaleDateString();
 }
 
+function formatDateTimeLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value || "";
+  }
+  return date.toLocaleString();
+}
+
 function formatAge(birthDate) {
   const birth = new Date(birthDate);
   if (Number.isNaN(birth.getTime())) {
@@ -107,25 +207,100 @@ function formatAge(birthDate) {
 
 function setActivePet(petId) {
   activePetId = petId ? Number.parseInt(petId, 10) : null;
+  const activeValue = activePetId ? String(activePetId) : "";
+  petSelect.value = activeValue;
+  heroPetSelect.value = activeValue;
+
   const pet = pets.find((item) => item.id === activePetId);
   if (!pet) {
     petDetails.textContent = "Add a pet to start tracking.";
     activePetLabel.textContent = "Add a pet to start logging weigh-ins.";
+    weighInPetLabel.textContent = "Add a pet to start logging weigh-ins.";
     form.querySelector("button").disabled = true;
-    tipsStatus.textContent = "Add a pet to get tips.";
-    generateQuestionsBtn.disabled = true;
-    questionsStatus.textContent = "Add a pet to generate questions.";
-    pendingQuestions = [];
-    renderQuestions([]);
+    refreshAdviceBtn.disabled = true;
+    chatInput.disabled = true;
+    chatForm.querySelector("button").disabled = true;
+    tipsStatus.textContent = "Add a pet to load advice.";
+    chatStatus.textContent = "Add a pet to start chatting.";
+    memoryStatus.textContent = "No memory yet.";
+    petBirthStatus.textContent = "";
+    petBirthEditInput.value = "";
+    petBirthEditInput.disabled = true;
+    updatePetBirthBtn.disabled = true;
+    dietStartStatus.textContent = "";
+    petDietStartEditInput.value = "";
+    petDietStartEditInput.disabled = true;
+    updateDietStartBtn.disabled = true;
+    trendFeedback.textContent = "Add weigh-ins to see progress feedback.";
+    renderChat([]);
+    renderMemory([]);
     return;
   }
-  petDetails.textContent = `${pet.breed} · ${formatAge(pet.birth_date)}`;
+
+  const dietStartLabel = pet.diet_start_date
+    ? `Diet started ${formatDateLabel(pet.diet_start_date)}`
+    : "Diet start not set";
+  petDetails.textContent = `${pet.breed} · ${formatAge(pet.birth_date)} · ${dietStartLabel}`;
   activePetLabel.textContent = `Logging for ${pet.name}`;
+  weighInPetLabel.textContent = `Logging for ${pet.name}`;
   form.querySelector("button").disabled = false;
-  generateQuestionsBtn.disabled = false;
-  questionsStatus.textContent = "";
-  pendingQuestions = [];
-  renderQuestions([]);
+  refreshAdviceBtn.disabled = false;
+  chatInput.disabled = false;
+  chatForm.querySelector("button").disabled = false;
+  petBirthEditInput.disabled = false;
+  updatePetBirthBtn.disabled = false;
+  petBirthEditInput.value = pet.birth_date || "";
+  petBirthStatus.textContent = "";
+  petDietStartEditInput.disabled = false;
+  updateDietStartBtn.disabled = false;
+  petDietStartEditInput.value = pet.diet_start_date || "";
+  dietStartStatus.textContent = "";
+  chatStatus.textContent = "";
+}
+
+function computeTrendFeedback(records, pet) {
+  if (!records.length) {
+    return "Add weigh-ins to see progress feedback.";
+  }
+
+  const dietStartDate = pet?.diet_start_date || "";
+  const scopedRecords = dietStartDate
+    ? records.filter((record) => record.date >= dietStartDate)
+    : records;
+
+  if (!dietStartDate) {
+    return "Set a diet start date to track progress against your plan baseline.";
+  }
+
+  if (!scopedRecords.length) {
+    return `No weigh-ins since diet start date (${formatDateLabel(dietStartDate)}).`;
+  }
+
+  if (scopedRecords.length === 1) {
+    return "One weigh-in logged. Add another entry to calculate progress.";
+  }
+
+  const first = scopedRecords[0];
+  const last = scopedRecords[scopedRecords.length - 1];
+  const change = last.weight - first.weight;
+  const days = Math.max(
+    1,
+    Math.round(
+      (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24)
+    )
+  );
+  const weeklyRate = (change / days) * 7;
+  const absChange = Math.abs(change).toFixed(2);
+  const absWeekly = Math.abs(weeklyRate).toFixed(2);
+  const percent = Math.abs((change / first.weight) * 100).toFixed(1);
+
+  if (change < -0.05) {
+    return `Since ${formatDateLabel(dietStartDate)}: down ${absChange} lb (${percent}%) over ${days} days (~${absWeekly} lb/week).`;
+  }
+  if (change > 0.05) {
+    return `Since ${formatDateLabel(dietStartDate)}: up ${absChange} lb (${percent}%) over ${days} days (~${absWeekly} lb/week). Consider reviewing portions, treats, and activity.`;
+  }
+  return `Since ${formatDateLabel(dietStartDate)}: weight is steady over ${days} days. Maintain routine or adjust gently.`;
 }
 
 function updateLatest(records) {
@@ -204,23 +379,6 @@ function renderChart(records) {
   });
 }
 
-function renderTips(tips) {
-  tipsList.innerHTML = "";
-  if (!tips) {
-    return;
-  }
-  if (!tips.length) {
-    tipsStatus.textContent = "No tips yet. Add a few weigh-ins.";
-    return;
-  }
-  tipsStatus.textContent = "";
-  tips.forEach((tip) => {
-    const item = document.createElement("li");
-    appendTextWithLinks(item, tip);
-    tipsList.appendChild(item);
-  });
-}
-
 function appendTextWithLinks(container, text) {
   const regex = /(https?:\/\/[^\s]+)/g;
   let lastIndex = 0;
@@ -252,40 +410,77 @@ function appendTextWithLinks(container, text) {
   }
 }
 
-function renderQuestions(questions) {
-  questionsList.innerHTML = "";
-  if (!questions.length) {
-    questionsStatus.textContent = "No questions yet.";
+function renderTips(tips) {
+  tipsList.innerHTML = "";
+  if (!tips) {
     return;
   }
-  questionsStatus.textContent = "";
-  questions.forEach((question, index) => {
-    const wrapper = document.createElement("label");
-    wrapper.className = "question-item";
-    wrapper.textContent = question;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Type your answer";
-    input.dataset.questionIndex = String(index);
-    wrapper.appendChild(input);
-    questionsList.appendChild(wrapper);
+  if (!tips.length) {
+    const item = document.createElement("li");
+    item.textContent = "No advice saved yet. Use Refresh advice after you add routine details.";
+    tipsList.appendChild(item);
+    return;
+  }
+
+  tips.forEach((tip) => {
+    const item = document.createElement("li");
+    appendTextWithLinks(item, tip);
+    tipsList.appendChild(item);
   });
 }
 
-function renderFacts(facts) {
-  factsList.innerHTML = "";
-  if (!facts.length) {
-    const item = document.createElement("li");
-    item.className = "fact-item";
-    item.textContent = "No saved answers yet.";
-    factsList.appendChild(item);
+function renderChat(messages) {
+  chatList.innerHTML = "";
+
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper";
+    empty.textContent = "No messages yet. Share feeding or exercise details to build memory.";
+    chatList.appendChild(empty);
     return;
   }
-  facts.forEach((fact) => {
-    const item = document.createElement("li");
-    item.className = "fact-item";
-    item.innerHTML = `<strong>${fact.question}</strong><span>${fact.answer}</span>`;
-    factsList.appendChild(item);
+
+  messages.forEach((message) => {
+    const bubble = document.createElement("div");
+    const isUser = message.role === "user";
+    bubble.className = `chat-bubble ${isUser ? "chat-user" : "chat-assistant"}`;
+
+    const role = document.createElement("p");
+    role.className = "chat-role";
+    role.textContent = isUser ? "You" : "Coach";
+
+    const body = document.createElement("p");
+    body.className = "chat-body";
+    body.textContent = message.content;
+
+    const time = document.createElement("p");
+    time.className = "chat-time";
+    time.textContent = formatDateTimeLabel(message.created_at);
+
+    bubble.appendChild(role);
+    bubble.appendChild(body);
+    bubble.appendChild(time);
+    chatList.appendChild(bubble);
+  });
+
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+function renderMemory(items) {
+  memoryList.innerHTML = "";
+
+  if (!items.length) {
+    memoryStatus.textContent = "No memory yet.";
+    return;
+  }
+
+  memoryStatus.textContent = `${items.length} memory item${items.length === 1 ? "" : "s"} saved.`;
+
+  items.forEach((item) => {
+    const row = document.createElement("li");
+    row.className = "fact-item";
+    row.innerHTML = `<strong>${item.memory_key}</strong><span>${item.memory_value}</span>`;
+    memoryList.appendChild(row);
   });
 }
 
@@ -311,6 +506,24 @@ async function createPet(payload) {
   return response.json();
 }
 
+async function updatePetProfileDatesRemote(petId, payload) {
+  const response = await fetch(`/api/pets/${petId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Unable to update pet profile.");
+  }
+
+  const data = await response.json();
+  return data.pet;
+}
+
 async function fetchWeights() {
   if (!activePetId) {
     return [];
@@ -322,65 +535,116 @@ async function fetchWeights() {
   return response.json();
 }
 
-async function fetchFacts() {
+async function fetchAdvice() {
   if (!activePetId) {
-    return [];
+    return { tips: [] };
   }
-  const response = await fetch(`/api/facts?petId=${activePetId}`);
+
+  const response = await fetch(`/api/advice?petId=${activePetId}`);
   if (!response.ok) {
-    return [];
+    return { tips: [] };
   }
+
   return response.json();
 }
 
-async function fetchQuestions() {
-  if (!activePetId) {
-    return [];
-  }
-  const response = await fetch(`/api/questions?petId=${activePetId}`);
-  if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    questionsStatus.textContent = data?.error || "Unable to generate questions.";
-    return [];
-  }
-  const data = await response.json();
-  return data.questions || [];
-}
-
-async function saveFacts(items) {
-  const response = await fetch("/api/facts/bulk", {
+async function refreshAdviceRemote() {
+  const response = await fetch("/api/advice/refresh", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       petId: activePetId,
-      items,
     }),
   });
+
   if (!response.ok) {
-    throw new Error("Unable to save facts.");
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Unable to refresh advice.");
   }
+
   return response.json();
 }
 
-async function fetchTips() {
+async function fetchChatHistory() {
   if (!activePetId) {
     return [];
   }
-  const response = await fetch(`/api/tips?petId=${activePetId}`);
+
+  const response = await fetch(`/api/chat/history?petId=${activePetId}`);
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return data.messages || [];
+}
+
+async function fetchMemory() {
+  if (!activePetId) {
+    return [];
+  }
+
+  const response = await fetch(`/api/memory?petId=${activePetId}`);
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return data.items || [];
+}
+
+async function sendChatMessage(message) {
+  const response = await fetch("/api/chat/message", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      petId: activePetId,
+      message,
+    }),
+  });
+
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    tipsStatus.textContent = data?.error || "Tips unavailable. Check API key.";
-    return { tips: null };
+    throw new Error(data?.error || "Unable to send message.");
   }
-  const data = await response.json();
-  if (data.reason === "no_weights") {
-    tipsStatus.textContent = "Add a few weigh-ins to generate tips.";
-  } else if (data.reason === "no_tips") {
-    tipsStatus.textContent = "No tips returned. Try again.";
+
+  return response.json();
+}
+
+function renderPetOptions() {
+  const selects = [petSelect, heroPetSelect];
+  selects.forEach((select) => {
+    select.innerHTML = "";
+  });
+
+  petSelect.innerHTML = "";
+  if (!pets.length) {
+    selects.forEach((select) => {
+      const option = document.createElement("option");
+      option.textContent = "No pets yet";
+      option.value = "";
+      select.appendChild(option);
+      select.disabled = true;
+    });
+    return;
   }
-  return { tips: data.tips || [] };
+
+  selects.forEach((select) => {
+    select.disabled = false;
+  });
+
+  pets.forEach((pet) => {
+    selects.forEach((select) => {
+      const option = document.createElement("option");
+      option.value = pet.id;
+      option.textContent = pet.name;
+      select.appendChild(option);
+    });
+  });
 }
 
 async function refresh() {
@@ -388,20 +652,34 @@ async function refresh() {
     updateLatest([]);
     renderEntries([]);
     renderChart([]);
-    renderTips(null);
-    pendingQuestions = [];
-    renderQuestions([]);
-    renderFacts([]);
+    renderTips([]);
+    renderChat([]);
+    renderMemory([]);
     return;
   }
+
   const records = await fetchWeights();
+  const activePet = pets.find((item) => item.id === activePetId) || null;
   updateLatest(records);
   renderEntries(records);
   renderChart(records);
-  const tipsPayload = await fetchTips();
-  renderTips(tipsPayload?.tips ?? null);
-  const facts = await fetchFacts();
-  renderFacts(facts);
+  trendFeedback.textContent = computeTrendFeedback(records, activePet);
+
+  const advice = await fetchAdvice();
+  renderTips(advice.tips || []);
+  if (advice.reason === "no_cache") {
+    tipsStatus.textContent = "No advice yet. Click Refresh advice to generate it.";
+  } else if (advice.updatedAt) {
+    tipsStatus.textContent = `Last refreshed ${formatDateTimeLabel(advice.updatedAt)}.`;
+  } else {
+    tipsStatus.textContent = "Advice unavailable.";
+  }
+
+  const messages = await fetchChatHistory();
+  renderChat(messages);
+
+  const memoryItems = await fetchMemory();
+  renderMemory(memoryItems);
 }
 
 form.addEventListener("submit", async (event) => {
@@ -432,54 +710,108 @@ form.addEventListener("submit", async (event) => {
   }
 
   form.reset();
+  dateInput.value = today.toISOString().split("T")[0];
+  closeModal(weighInModal);
   await refresh();
+});
+
+updatePetBirthBtn.addEventListener("click", async () => {
+  if (!activePetId) {
+    return;
+  }
+
+  const birthDate = petBirthEditInput.value;
+  if (!birthDate) {
+    petBirthStatus.textContent = "Choose a birth date first.";
+    return;
+  }
+
+  petBirthStatus.textContent = "Updating age...";
+  try {
+    const updatedPet = await updatePetProfileDatesRemote(activePetId, { birthDate });
+    pets = pets.map((pet) => (pet.id === updatedPet.id ? updatedPet : pet));
+    setActivePet(activePetId);
+    petBirthStatus.textContent = "Birth date updated.";
+  } catch (error) {
+    petBirthStatus.textContent = error.message;
+  }
+});
+
+updateDietStartBtn.addEventListener("click", async () => {
+  if (!activePetId) {
+    return;
+  }
+
+  dietStartStatus.textContent = "Updating diet start...";
+  try {
+    const updatedPet = await updatePetProfileDatesRemote(activePetId, {
+      dietStartDate: petDietStartEditInput.value || null,
+    });
+    pets = pets.map((pet) => (pet.id === updatedPet.id ? updatedPet : pet));
+    setActivePet(activePetId);
+    await refresh();
+    dietStartStatus.textContent = "Diet start date updated.";
+  } catch (error) {
+    dietStartStatus.textContent = error.message;
+  }
 });
 
 petSelect.addEventListener("change", async (event) => {
   setActivePet(event.target.value);
-  tipsStatus.textContent = "Loading tips...";
+  tipsStatus.textContent = activePetId ? "Loading saved advice..." : "Add a pet to load advice.";
   await refresh();
 });
 
-generateQuestionsBtn.addEventListener("click", async () => {
+heroPetSelect.addEventListener("change", async (event) => {
+  setActivePet(event.target.value);
+  tipsStatus.textContent = activePetId ? "Loading saved advice..." : "Add a pet to load advice.";
+  await refresh();
+});
+
+refreshAdviceBtn.addEventListener("click", async () => {
   if (!activePetId) {
     return;
   }
-  questionsStatus.textContent = "Generating questions...";
-  pendingQuestions = await fetchQuestions();
-  renderQuestions(pendingQuestions);
+
+  tipsStatus.textContent = "Refreshing advice...";
+  try {
+    const data = await refreshAdviceRemote();
+    renderTips(data.tips || []);
+    if (data.updatedAt) {
+      tipsStatus.textContent = `Last refreshed ${formatDateTimeLabel(data.updatedAt)}.`;
+    } else if (data.reason === "no_tips") {
+      tipsStatus.textContent = "No advice returned. Add more details and try again.";
+    } else {
+      tipsStatus.textContent = "Advice refreshed.";
+    }
+  } catch (error) {
+    tipsStatus.textContent = error.message;
+  }
 });
 
-factsForm.addEventListener("submit", async (event) => {
+chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!pendingQuestions.length) {
-    questionsStatus.textContent = "Generate questions first.";
-    return;
-  }
-  const inputs = Array.from(questionsList.querySelectorAll("input"));
-  const items = inputs
-    .map((input) => {
-      const index = Number.parseInt(input.dataset.questionIndex, 10);
-      return {
-        question: pendingQuestions[index],
-        answer: input.value.trim(),
-      };
-    })
-    .filter((item) => item.answer);
 
-  if (!items.length) {
-    questionsStatus.textContent = "Add at least one answer before saving.";
+  if (!activePetId) {
     return;
   }
+
+  const message = chatInput.value.trim();
+  if (!message) {
+    return;
+  }
+
+  chatStatus.textContent = "Sending...";
+  chatInput.value = "";
 
   try {
-    await saveFacts(items);
-    pendingQuestions = [];
-    renderQuestions([]);
-    questionsStatus.textContent = "Saved.";
-    await refresh();
+    await sendChatMessage(message);
+    const [messages, memoryItems] = await Promise.all([fetchChatHistory(), fetchMemory()]);
+    renderChat(messages);
+    renderMemory(memoryItems);
+    chatStatus.textContent = "Saved. Refresh advice when you are ready.";
   } catch (error) {
-    questionsStatus.textContent = "Unable to save answers.";
+    chatStatus.textContent = error.message;
   }
 });
 
@@ -490,6 +822,7 @@ petForm.addEventListener("submit", async (event) => {
     name: petNameInput.value.trim(),
     breed: petBreedInput.value.trim(),
     birthDate: petBirthInput.value,
+    dietStartDate: petDietStartInput.value || null,
   };
 
   try {
@@ -499,29 +832,12 @@ petForm.addEventListener("submit", async (event) => {
     petSelect.value = pet.id;
     setActivePet(pet.id);
     petForm.reset();
+    closeModal(petModal);
     await refresh();
   } catch (error) {
     alert("Unable to save the pet. Please try again.");
   }
 });
-
-function renderPetOptions() {
-  petSelect.innerHTML = "";
-  if (!pets.length) {
-    const option = document.createElement("option");
-    option.textContent = "No pets yet";
-    option.value = "";
-    petSelect.appendChild(option);
-    return;
-  }
-
-  pets.forEach((pet) => {
-    const option = document.createElement("option");
-    option.value = pet.id;
-    option.textContent = pet.name;
-    petSelect.appendChild(option);
-  });
-}
 
 const today = new Date();
 dateInput.value = today.toISOString().split("T")[0];
@@ -571,9 +887,38 @@ function setAuthMode(mode) {
 showSignupBtn.addEventListener("click", () => setAuthMode("signup"));
 showLoginBtn.addEventListener("click", () => setAuthMode("login"));
 
+showChartViewBtn.addEventListener("click", () => setWeightView("chart"));
+showEntriesViewBtn.addEventListener("click", () => setWeightView("entries"));
+
+openPetProfileBtn.addEventListener("click", () => openModal(petModal));
+openWeighInBtn.addEventListener("click", () => {
+  if (!activePetId) {
+    alert("Add a pet before logging weigh-ins.");
+    openModal(petModal);
+    return;
+  }
+  openModal(weighInModal);
+});
+
+document.querySelectorAll("[data-close-modal]").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    const modalId = event.currentTarget.getAttribute("data-close-modal");
+    closeModal(document.getElementById(modalId));
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") {
+    return;
+  }
+  closeModal(petModal);
+  closeModal(weighInModal);
+});
+
 async function boot() {
   authGate.hidden = false;
   appShell.hidden = true;
+
   try {
     const user = await fetchMe();
     if (!user) {
@@ -582,6 +927,7 @@ async function boot() {
       setAuthMode("signup");
       return;
     }
+
     authGate.hidden = true;
     appShell.hidden = false;
     userName.textContent = user.username;
@@ -591,14 +937,18 @@ async function boot() {
   } catch (error) {
     userName.textContent = "Unknown";
   }
+
   pets = await fetchPets();
   renderPetOptions();
   const initialId = pets.length ? pets[0].id : null;
   if (initialId) {
     petSelect.value = initialId;
+    heroPetSelect.value = initialId;
   }
+
   setActivePet(initialId);
-  tipsStatus.textContent = pets.length ? "Loading tips..." : "Add a pet to get tips.";
+  tipsStatus.textContent = pets.length ? "Loading saved advice..." : "Add a pet to load advice.";
+  setWeightView("chart");
   await refresh();
 }
 

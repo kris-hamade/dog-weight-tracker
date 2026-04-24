@@ -74,6 +74,15 @@
             Log weigh-ins, view trends, and keep a steady pulse on your pup's
             progress.
           </p>
+          <div class="hero-actions">
+            <button id="openPetProfileBtn" type="button">Pet profile</button>
+            <button id="openWeighInBtn" class="button" type="button">New weigh-in</button>
+          </div>
+          <div class="hero-pet-switch">
+            <label for="heroPetSelect">Active pet</label>
+            <select id="heroPetSelect" aria-label="Active pet"></select>
+          </div>
+          <p id="activePetLabel" class="helper"></p>
         </div>
         <div class="metric-card">
           <div>
@@ -85,14 +94,87 @@
       </section>
 
       <section class="content">
-        <div class="card">
-          <h2>Pet profile</h2>
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>Weight trend</h2>
+            <div class="view-switch" role="tablist" aria-label="Weight views">
+              <button id="showChartViewBtn" class="switch-btn is-active" type="button" role="tab" aria-selected="true">Chart</button>
+              <button id="showEntriesViewBtn" class="switch-btn" type="button" role="tab" aria-selected="false">Latest entries</button>
+            </div>
+          </div>
+          <p id="trendFeedback" class="helper"></p>
+          <div id="chartViewPanel" class="view-panel">
+            <canvas id="weightChart" height="120"></canvas>
+          </div>
+          <div id="entriesViewPanel" class="view-panel" hidden>
+            <p class="helper">Newest entries appear first.</p>
+            <ul id="entriesList" class="entries"></ul>
+          </div>
+        </div>
+
+        <div class="card tips-card">
+          <div class="card-header">
+            <h2>Weight-loss tips</h2>
+            <p class="helper">Refresh on demand using your latest chat + weight trend.</p>
+          </div>
+          <div class="facts-actions">
+            <button id="refreshAdviceBtn" type="button">Refresh advice</button>
+            <p id="tipsStatus" class="helper">Select a pet to load saved advice.</p>
+          </div>
+          <ul id="tipsList" class="tips"></ul>
+        </div>
+
+        <div class="card facts-card prominent-card">
+          <div class="card-header">
+            <h2>Routine chat</h2>
+            <p class="helper">Chat about meals, treats, and activity to build pet memory.</p>
+          </div>
+          <div id="chatList" class="chat-list"></div>
+          <form id="chatForm" class="chat-form">
+            <label>
+              Message
+              <input type="text" id="chatInput" placeholder="Example: He gets 2 small treats after each walk" required />
+            </label>
+            <button type="submit">Send</button>
+            <p id="chatStatus" class="helper"></p>
+          </form>
+          <div class="facts-history">
+            <h3>Saved memory</h3>
+            <p id="memoryStatus" class="helper">No memory yet.</p>
+            <ul id="memoryList" class="facts"></ul>
+          </div>
+        </div>
+      </section>
+
+      <div id="petModal" class="modal" hidden>
+        <div class="modal-backdrop" data-close-modal="petModal"></div>
+        <div class="modal-dialog card">
+          <div class="modal-header">
+            <h2>Pet profile</h2>
+            <button class="modal-close" data-close-modal="petModal" type="button" aria-label="Close">×</button>
+          </div>
           <div class="pet-select">
             <label>
               Active pet
               <select id="petSelect" required></select>
             </label>
             <div id="petDetails" class="pet-details"></div>
+            <div class="pet-update-row">
+              <label>
+                Update birth date
+                <input type="date" id="petBirthEditInput" />
+              </label>
+              <button id="updatePetBirthBtn" type="button">Update age</button>
+            </div>
+            <p id="petBirthStatus" class="helper"></p>
+            <div class="pet-update-row">
+              <label>
+                Diet start date
+                <input type="date" id="petDietStartEditInput" />
+              </label>
+              <button id="updateDietStartBtn" type="button">Update diet start</button>
+            </div>
+            <p id="dietStartStatus" class="helper"></p>
           </div>
           <form id="petForm" class="pet-form">
             <label>
@@ -107,14 +189,24 @@
               Birth date
               <input type="date" id="petBirthInput" required />
             </label>
+            <label>
+              Diet start date (optional)
+              <input type="date" id="petDietStartInput" />
+            </label>
             <button type="submit">Add pet</button>
           </form>
         </div>
+      </div>
 
-        <div class="card">
-          <h2>New weigh-in</h2>
+      <div id="weighInModal" class="modal" hidden>
+        <div class="modal-backdrop" data-close-modal="weighInModal"></div>
+        <div class="modal-dialog card">
+          <div class="modal-header">
+            <h2>New weigh-in</h2>
+            <button class="modal-close" data-close-modal="weighInModal" type="button" aria-label="Close">×</button>
+          </div>
           <form id="weightForm">
-            <p id="activePetLabel" class="helper"></p>
+            <p id="weighInPetLabel" class="helper"></p>
             <label>
               Date
               <input type="date" id="dateInput" required />
@@ -126,51 +218,7 @@
             <button type="submit">Save entry</button>
           </form>
         </div>
-
-        <div class="card chart-card">
-          <div class="card-header">
-            <h2>Weight trend</h2>
-            <p class="helper">Showing all recorded weigh-ins.</p>
-          </div>
-          <canvas id="weightChart" height="120"></canvas>
-        </div>
-
-        <div class="card list-card">
-          <div class="card-header">
-            <h2>Recent entries</h2>
-            <p class="helper">Newest entries appear first.</p>
-          </div>
-          <ul id="entriesList" class="entries"></ul>
-        </div>
-
-        <div class="card facts-card">
-          <div class="card-header">
-            <h2>Routine & notes</h2>
-            <p class="helper">Answer a few questions so tips stay relevant.</p>
-          </div>
-          <div class="facts-actions">
-            <button id="generateQuestionsBtn" type="button">Generate questions</button>
-            <p id="questionsStatus" class="helper"></p>
-          </div>
-          <form id="factsForm" class="facts-form">
-            <div id="questionsList" class="questions"></div>
-            <button type="submit">Save answers</button>
-          </form>
-          <div class="facts-history">
-            <h3>Saved answers</h3>
-            <ul id="factsList" class="facts"></ul>
-          </div>
-        </div>
-
-        <div class="card tips-card">
-          <div class="card-header">
-            <h2>Weight-loss tips</h2>
-            <p class="helper">AI suggestions for the active pet.</p>
-          </div>
-          <p id="tipsStatus" class="helper">Select a pet to get tips.</p>
-          <ul id="tipsList" class="tips"></ul>
-        </div>
-      </section>
+      </div>
       </div>
     </main>
 
